@@ -102,7 +102,7 @@ func LoginUser(c *gin.Context) {
 	// Set cookie:
 	c.Header("Set-Cookie",
 		"token="+token+
-			"; Path=/; Domain=boardsar.onrender.com; Max-Age=3600; HttpOnly; Secure; SameSite=None")
+			"; Path=/; Max-Age=3600; HttpOnly; Secure; SameSite=None")
 
 	c.JSON(http.StatusOK, gin.H{
 		"token": token,
