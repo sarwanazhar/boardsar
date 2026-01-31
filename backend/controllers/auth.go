@@ -101,13 +101,13 @@ func LoginUser(c *gin.Context) {
 
 	// Set cookie:
 	c.SetCookie(
-		"token", // name
-		token,   // value (JWT)
-		0,       // 0 means it will never die.
-		"/",     // path
-		"",      // domain (empty for default)
-		true,    // secure (false on http local dev)
-		true,    // httpOnly
+		"token",                 // name
+		token,                   // value (JWT)
+		0,                       // 0 means it will never die.
+		"/",                     // path
+		"boardsar.onrender.com", // domain (empty for default)
+		true,                    // secure (false on http local dev)
+		true,                    // httpOnly
 	)
 
 	c.JSON(http.StatusOK, gin.H{
