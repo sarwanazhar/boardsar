@@ -1,0 +1,113 @@
+@import "tailwindcss";
+
+/* Enable .dark class for Tailwind utilities */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Default theme variables */
+@theme {
+  --color-primary: #80f20d;
+  --color-accent-cyan: #22d3ee;
+  --color-background-light: #f7f8f5;
+  --color-background-dark: #121212;
+  --color-charcoal: #192210;
+  --color-card-dark: #121212;
+  --color-neon-purple: #bc13fe;
+  --color-neon-cyan: #00f3ff;
+}
+
+/* Dark mode override */
+.dark {
+  @theme {
+    --color-background-light: #121212;
+    --color-background-dark: #121212;
+    --color-card-dark: #121212;
+  }
+}
+
+/* Body styles for the board design */
+body {
+  font-family: 'Spline Sans', sans-serif;
+  background-image: 
+    linear-gradient(rgba(128, 242, 13, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(128, 242, 13, 0.05) 1px, transparent 1px);
+  background-size: 30px 30px;
+  min-height: 100dvh;
+}
+
+/* Custom utility classes for the board design */
+@layer utilities {
+  .sketchy-border {
+    border: 2px solid currentColor;
+    border-radius: 255px 15px 225px 15px/15px 225px 15px 255px;
+  }
+  
+  .paper-cut-border {
+    clip-path: polygon(0% 2%, 5% 0%, 10% 3%, 15% 0%, 20% 2%, 25% 0%, 30% 3%, 35% 1%, 40% 4%, 45% 0%, 50% 2%, 55% 0%, 60% 3%, 65% 1%, 70% 2%, 75% 0%, 80% 3%, 85% 1%, 90% 4%, 95% 0%, 100% 3%, 98% 10%, 100% 20%, 97% 30%, 100% 40%, 98% 50%, 100% 60%, 97% 70%, 100% 80%, 98% 90%, 100% 100%, 90% 98%, 80% 100%, 70% 97%, 60% 100%, 50% 98%, 40% 100%, 30% 97%, 20% 100%, 10% 98%, 0% 100%, 2% 90%, 0% 80%, 3% 70%, 0% 60%, 2% 50%, 0% 40%, 3% 30%, 0% 20%, 2% 10%);
+  }
+  
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .grid-bg {
+    background-image: radial-gradient(circle, #333 1px, transparent 1px);
+    background-size: 30px 30px;
+  }
+  
+  .sketch-border {
+    border: 2px solid var(--color-primary);
+    border-radius: 255px 15px 225px 15px/15px 225px 15px 255px;
+  }
+  
+  .glass-nav {
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+  
+  .glass-card {
+    background: rgba(18, 18, 18, 0.7);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  
+  .floating-doodle {
+    position: absolute;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0.4;
+  }
+  
+  .font-display {
+    font-family: 'Spline Sans', sans-serif;
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translate(0,0) rotate(0deg);
+  }
+  33% {
+    transform: translate(10px,-15px) rotate(5deg);
+  }
+  66% {
+    transform: translate(-5px,10px) rotate(-3deg);
+  }
+}
+
+.animate-float {
+  animation: float 8s ease-in-out infinite;
+}
+
+.animate-float-delayed {
+  animation: float 10s ease-in-out infinite 2s;
+}
+
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
