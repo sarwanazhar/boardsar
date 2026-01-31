@@ -106,7 +106,7 @@ func LoginUser(c *gin.Context) {
 		0,       // 0 means it will never die.
 		"/",     // path
 		"",      // domain (empty for default)
-		false,   // secure (false on http local dev)
+		true,    // secure (false on http local dev)
 		true,    // httpOnly
 	)
 
