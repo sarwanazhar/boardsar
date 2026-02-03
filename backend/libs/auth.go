@@ -88,7 +88,9 @@ func FindUserByEmail(email string) (*models.User, error) {
 	return &user, nil
 }
 
-var jwtSecret = []byte(os.Getenv("JWT_SECRET"))
+func GetJWTSecret() []byte {
+	return []byte(os.Getenv("JWT_SECRET"))
+}
 
 func GenerateJWT(userID string) (string, error) {
 	claims := jwt.MapClaims{
@@ -97,7 +99,7 @@ func GenerateJWT(userID string) (string, error) {
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
-	return token.SignedString(jwtSecret)
+	return token.SignedString(GetJWTSecret())
 }
 
 func FindUserByID(id string) (*models.User, error) {

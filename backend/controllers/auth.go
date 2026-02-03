@@ -99,11 +99,6 @@ func LoginUser(c *gin.Context) {
 		return
 	}
 
-	// Set cookie:
-	c.Header("Set-Cookie",
-		"token="+token+
-			"; Path=/; Max-Age=3600; HttpOnly; Secure; SameSite=None")
-
 	c.JSON(http.StatusOK, gin.H{
 		"token": token,
 		"user": gin.H{

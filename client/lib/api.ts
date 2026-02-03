@@ -8,7 +8,15 @@ export const api = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
-  withCredentials: true, // send cookies automatically
+});
+
+// Add request interceptor to attach token
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
 });
 
 // Remove automatic redirect — let logic handle it:
@@ -29,17 +37,16 @@ export const authAPI = {
   },
 
   login: async (email: string, password: string) => {
-    // Backend sets cookie
+    // Backend should return token in response body for localStorage
     const response = await api.post(
       "/auth/login",
-      { email, password },
-      { withCredentials: true }
+      { email, password }
     );
     return response.data;
   },
 
   getProfile: async () => {
-    const response = await api.get("/me", { withCredentials: true });
+    const response = await api.get("/me");
     return response.data; // Returns { id, email }
   },
 };
@@ -47,8 +54,8 @@ export const authAPI = {
 export const boardAPI = {
   getBoards: async () => {
     try {
-      const response = await api.get("/api/boards", { withCredentials: true });
-      
+      const response = await api.get("/api/boards");
+
       // Backend already returns the correct format, no transformation needed
       return response.data.boards || [];
     } catch (error: any) {
@@ -60,8 +67,8 @@ export const boardAPI = {
   },
 
   getBoard: async (boardId: string) => {
-    const response = await api.get(`/api/boards/${boardId}`, { withCredentials: true });
-    
+    const response = await api.get(`/api/boards/${boardId}`);
+
     // Backend already returns the correct format, no transformation needed
     return response.data.board;
   },
@@ -69,7 +76,7 @@ export const boardAPI = {
   createBoard: async (name: string) => {
     const response = await api.post(
       "/api/boards",
-      { 
+      {
         boardId: name, // Use name as boardId for simplicity
         board: {
           shapes: {},
@@ -91,9 +98,8 @@ export const boardAPI = {
           history: { past: [], future: [] },
         }
       },
-      { withCredentials: true }
     );
-    
+
     // Backend already returns the correct format, no transformation needed
     return response.data.board;
   },
@@ -101,13 +107,12 @@ export const boardAPI = {
   updateBoard: async (boardId: string, data: any) => {
     const response = await api.put(
       `/api/boards/${boardId}`,
-      { 
+      {
         board: data,
         boardId: boardId
       },
-      { withCredentials: true }
     );
-    
+
     // Backend already returns the correct format, no transformation needed
     return response.data.board;
   },
@@ -115,7 +120,6 @@ export const boardAPI = {
   deleteBoard: async (boardId: string) => {
     const response = await api.delete(
       `/api/boards/${boardId}`,
-      { withCredentials: true }
     );
     return response.data;
   },

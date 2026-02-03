@@ -32,15 +32,16 @@ export const useAuthStore = create<AuthState>()(
           const response = await authAPI.login(email, password);
           console.log('Login response:', response);
 
-          if (response.user) {
+          if (response.user && response.token) {
+            localStorage.setItem('token', response.token);
             set({
               user: response.user,
               isLoading: false,
               error: null,
             });
             return true;
-          } else if (response.token && response.user) {
-            // Handle case where response has both token and user
+          } else if (response.user) {
+            // If only user is returned, assume token is in localStorage already
             set({
               user: response.user,
               isLoading: false,
@@ -73,6 +74,7 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: () => {
+        localStorage.removeItem('token');
         set({ user: null, error: null });
       },
 
@@ -96,15 +98,23 @@ export const useAuthStore = create<AuthState>()(
 export const useInitAuth = () => {
   const { setUser } = useAuthStore();
 
-  const initAuth = async () => {
+  const initAuth = async (): Promise<boolean> => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      setUser(null);
+      return false;
+    }
+
     try {
       const profile = await authAPI.getProfile();
       console.log('Auth profile:', profile);
       setUser(profile);
+      return true;
     } catch (error: any) {
       console.error('Auth error:', error);
-      console.error('Auth error response:', error.response);
-      setUser(null); // Ensure null on failure
+      localStorage.removeItem('token');
+      setUser(null);
+      return false;
     }
   };
 

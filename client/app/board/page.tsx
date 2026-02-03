@@ -7,11 +7,12 @@ import { useBoardStore } from "@/lib/boardStore"
 import { LogoutButton } from "@/components/LogoutButton"
 import { CreateBoardModal } from "@/components/CreateBoardModal"
 import { DeleteBoardModal } from "@/components/DeleteBoardModal"
+import { authAPI } from "@/lib/api"
 import Link from "next/link"
 
 export default function BoardPage() {
-  const { user } = useAuthStore()
-  const { initAuth } = useInitAuth()
+  const { user, setUser } = useAuthStore()
+  // const { initAuth } = useInitAuth() // Not used anymore
   const { boards, isLoading, error, fetchBoards, createBoard, deleteBoard, clearError } = useBoardStore()
   const router = useRouter()
 
@@ -26,29 +27,44 @@ export default function BoardPage() {
   const [viewMode, setViewMode] = useState<'all' | 'recent' | 'starred' | 'shared'>('all')
   // A ref to make sure we only do the auth check once
   const authCheckedRef = useRef(false)
+  // We use setUser from store
+
 
   useEffect(() => {
-    if (authCheckedRef.current) return // skip if already checked
+    if (authCheckedRef.current) return
     authCheckedRef.current = true
 
-      ; (async () => {
-        try {
-          await initAuth() // calls /me once
-        } catch (err) {
-          // ignore — user will be null
-        }
+    const checkAuth = async () => {
+      const token = localStorage.getItem("token")
+
+      if (!token) {
+        setUser(null)
         setCheckingAuth(false)
-      })()
-  }, [initAuth])
+        return
+      }
+
+      try {
+        console.log("Verifying token...")
+        const userProfile = await authAPI.getProfile()
+        console.log("Auth verified:", userProfile)
+        setUser(userProfile)
+      } catch (err) {
+        console.error("Auth check failed:", err)
+        localStorage.removeItem("token")
+        setUser(null)
+      } finally {
+        setCheckingAuth(false)
+      }
+    }
+
+    checkAuth()
+  }, []) // Empty dependency array - only run once
 
   useEffect(() => {
-    if (!checkingAuth && !user) {
-      router.replace("/login")
-    } else if (!checkingAuth && user) {
-      // Fetch boards when user is authenticated
+    if (!checkingAuth && user) {
       fetchBoards()
     }
-  }, [checkingAuth, user, router, fetchBoards])
+  }, [checkingAuth, user, fetchBoards])
 
   // Clear error when modal opens
   useEffect(() => {
@@ -63,6 +79,13 @@ export default function BoardPage() {
         <div className="text-white">Loading...</div>
       </div>
     )
+  }
+
+  if (!user) {
+    if (typeof window !== 'undefined') {
+      router.replace('/login')
+    }
+    return null
   }
 
   // Format date to relative time
@@ -167,8 +190,8 @@ export default function BoardPage() {
           <button
             onClick={() => setViewMode('all')}
             className={`flex h-10 shrink-0 items-center justify-center gap-x-2 rounded-xl px-4 font-bold ${viewMode === 'all'
-                ? 'bg-primary text-background-dark sketchy-border border-primary'
-                : 'bg-charcoal text-white/70 border border-white/10'
+              ? 'bg-primary text-background-dark sketchy-border border-primary'
+              : 'bg-charcoal text-white/70 border border-white/10'
               }`}
           >
             <span className="material-symbols-outlined text-[20px]">dashboard</span>
@@ -177,8 +200,8 @@ export default function BoardPage() {
           <button
             onClick={() => setViewMode('recent')}
             className={`flex h-10 shrink-0 items-center justify-center gap-x-2 rounded-xl px-4 font-bold ${viewMode === 'recent'
-                ? 'bg-primary text-background-dark sketchy-border border-primary'
-                : 'bg-charcoal text-white/70 border border-white/10'
+              ? 'bg-primary text-background-dark sketchy-border border-primary'
+              : 'bg-charcoal text-white/70 border border-white/10'
               }`}
           >
             <span className="material-symbols-outlined text-[20px]">schedule</span>
@@ -187,8 +210,8 @@ export default function BoardPage() {
           <button
             onClick={() => setViewMode('starred')}
             className={`flex h-10 shrink-0 items-center justify-center gap-x-2 rounded-xl px-4 font-bold ${viewMode === 'starred'
-                ? 'bg-primary text-background-dark sketchy-border border-primary'
-                : 'bg-charcoal text-white/70 border border-white/10'
+              ? 'bg-primary text-background-dark sketchy-border border-primary'
+              : 'bg-charcoal text-white/70 border border-white/10'
               }`}
           >
             <span className="material-symbols-outlined text-[20px]">star</span>
@@ -197,8 +220,8 @@ export default function BoardPage() {
           <button
             onClick={() => setViewMode('shared')}
             className={`flex h-10 shrink-0 items-center justify-center gap-x-2 rounded-xl px-4 font-bold ${viewMode === 'shared'
-                ? 'bg-primary text-background-dark sketchy-border border-primary'
-                : 'bg-charcoal text-white/70 border border-white/10'
+              ? 'bg-primary text-background-dark sketchy-border border-primary'
+              : 'bg-charcoal text-white/70 border border-white/10'
               }`}
           >
             <span className="material-symbols-outlined text-[20px]">group</span>

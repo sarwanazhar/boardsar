@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuthStore, useInitAuth } from '@/lib/store'
+import { authAPI } from '@/lib/api'
 import Link from 'next/link'
 
 function RegisterPage() {
@@ -13,7 +14,7 @@ function RegisterPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
 
   const router = useRouter()
-  const { user, register, isLoading, error, clearError } = useAuthStore()
+  const { user, setUser, register, isLoading, error, clearError } = useAuthStore()
   const { initAuth } = useInitAuth()
 
   const [checkingAuth, setCheckingAuth] = useState(true)
@@ -21,28 +22,29 @@ function RegisterPage() {
 
   // Auth check effect (always declared)
   useEffect(() => {
-    if (ranOnceRef.current) return
-    ranOnceRef.current = true
-
-      ; (async () => {
-        try {
-          await initAuth()
-        } catch { }
+    const checkAuth = async () => {
+      const token = localStorage.getItem('token')
+      if (!token) {
         setCheckingAuth(false)
-      })()
-  }, [initAuth])
+        return
+      }
 
-  // Clear errors once on mount
-  useEffect(() => {
-    clearError()
-  }, [clearError])
-
-  // Redirect if authenticated after check
-  useEffect(() => {
-    if (!checkingAuth && user) {
-      router.replace('/board')
+      try {
+        const userProfile = await authAPI.getProfile()
+        setUser(userProfile)
+        router.replace('/board')
+      } catch (err) {
+        localStorage.removeItem('token')
+        setUser(null)
+        setCheckingAuth(false)
+      }
     }
-  }, [checkingAuth, user, router])
+
+    if (!ranOnceRef.current) {
+      ranOnceRef.current = true
+      checkAuth()
+    }
+  }, [setUser, router])
 
   // Now safe to early return
   if (checkingAuth) {
@@ -98,7 +100,7 @@ function RegisterPage() {
       <div className="relative min-h-screen flex flex-col items-center justify-center p-6 md:p-12 z-10">
         {/* Header */}
         <header className="w-full max-w-7xl flex items-center justify-center md:justify-start mb-12 md:mb-16 md:absolute md:top-12 md:left-12">
-          <div className="flex items-center gap-4 group cursor-pointer">
+          <div className="flex items-center gap-4 group cursor-pointer" onClick={() => router.push('/')}>
             <div className="text-primary flex size-12 md:size-16 shrink-0 items-center justify-center bg-white/5 rounded-full border-2 border-primary/30 group-hover:border-primary transition-all">
               <span className="material-symbols-outlined text-3xl md:text-4xl">brush</span>
             </div>

@@ -17,12 +17,6 @@ func JWTMiddleware() gin.HandlerFunc {
 		if strings.HasPrefix(authHeader, "Bearer ") {
 			// Extract token after "Bearer "
 			tokenString = strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
-		} else {
-			// 2️⃣ Fallback: try cookie
-			cookieToken, err := c.Cookie("token")
-			if err == nil && cookieToken != "" {
-				tokenString = cookieToken
-			}
 		}
 
 		// If still empty → unauthorized
@@ -37,7 +31,7 @@ func JWTMiddleware() gin.HandlerFunc {
 			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, jwt.ErrTokenSignatureInvalid
 			}
-			return jwtSecret, nil
+			return GetJWTSecret(), nil
 		})
 		if err != nil || !token.Valid {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})

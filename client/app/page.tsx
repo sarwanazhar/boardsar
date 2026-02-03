@@ -3,9 +3,10 @@ import React, { useEffect, useState, useRef } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useAuthStore, useInitAuth } from '@/lib/store';
+import { authAPI } from '@/lib/api';
 
 export default function BoardSarLanding() {
-  const { user } = useAuthStore();
+  const { user, setUser } = useAuthStore();
   const { initAuth } = useInitAuth();
   const [checkingAuth, setCheckingAuth] = useState(true);
 
@@ -13,18 +14,30 @@ export default function BoardSarLanding() {
   const authCheckedRef = useRef(false);
 
   useEffect(() => {
-    if (authCheckedRef.current) return // skip if already checked
-    authCheckedRef.current = true
-
-    ;(async () => {
-      try {
-        await initAuth() // calls /me once
-      } catch (err) {
-        // ignore — user will be null
+    const checkAuth = async () => {
+      const token = localStorage.getItem('token')
+      if (!token) {
+        setUser(null)
+        setCheckingAuth(false)
+        return
       }
-      setCheckingAuth(false)
-    })()
-  }, [initAuth])
+
+      try {
+        const userProfile = await authAPI.getProfile()
+        setUser(userProfile)
+      } catch (err) {
+        localStorage.removeItem('token')
+        setUser(null)
+      } finally {
+        setCheckingAuth(false)
+      }
+    }
+
+    if (!authCheckedRef.current) {
+      authCheckedRef.current = true
+      checkAuth()
+    }
+  }, [setUser])
 
   if (checkingAuth) {
     return (
