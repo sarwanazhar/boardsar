@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState, useRef } from "react"
+import React, { useEffect, useState, useRef, useCallback, memo } from "react"
 import { useRouter, useParams } from "next/navigation"
 import { useAuthStore, useInitAuth } from "@/lib/store"
 import { useWhiteboardStore } from "@/lib/whiteboardStore"
@@ -171,16 +171,16 @@ function getShapeBounds(shape: Shape): { x: number; y: number; width: number; he
   if (shape.type === "pen" || shape.type === "line") {
     const points = shape.points;
     if (points.length === 0) return { x: 0, y: 0, width: 0, height: 0 };
-    
+
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    
+
     for (let i = 0; i < points.length; i += 2) {
       minX = Math.min(minX, points[i]);
       maxX = Math.max(maxX, points[i]);
       minY = Math.min(minY, points[i + 1]);
       maxY = Math.max(maxY, points[i + 1]);
     }
-    
+
     return {
       x: minX,
       y: minY,
@@ -211,7 +211,7 @@ function getShapeBounds(shape: Shape): { x: number; y: number; width: number; he
       height: estimatedHeight,
     };
   }
-  
+
   return { x: 0, y: 0, width: 0, height: 0 };
 }
 
@@ -221,22 +221,22 @@ function getMultiSelectionBounds(
   selectedIds: string[]
 ): { x: number; y: number; width: number; height: number } | null {
   if (selectedIds.length === 0) return null;
-  
+
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  
+
   selectedIds.forEach(id => {
     const shape = shapes[id];
     if (!shape) return;
-    
+
     const bounds = getShapeBounds(shape);
     minX = Math.min(minX, bounds.x);
     minY = Math.min(minY, bounds.y);
     maxX = Math.max(maxX, bounds.x + bounds.width);
     maxY = Math.max(maxY, bounds.y + bounds.height);
   });
-  
+
   if (!isFinite(minX)) return null;
-  
+
   return {
     x: minX,
     y: minY,
@@ -264,7 +264,7 @@ function doesShapeIntersectMarquee(
   marquee: { x: number; y: number; width: number; height: number }
 ): boolean {
   const bounds = getShapeBounds(shape);
-  
+
   return !(
     bounds.x + bounds.width < marquee.x ||
     bounds.x > marquee.x + marquee.width ||
@@ -291,10 +291,10 @@ function saveToHistory(board: Board): Board {
 // Undo
 function undo(board: Board): Board {
   if (board.history.past.length === 0) return board;
-  
+
   const previous = board.history.past[board.history.past.length - 1];
   const newPast = board.history.past.slice(0, -1);
-  
+
   return {
     ...board,
     shapes: previous,
@@ -309,10 +309,10 @@ function undo(board: Board): Board {
 // Redo
 function redo(board: Board): Board {
   if (board.history.future.length === 0) return board;
-  
+
   const next = board.history.future[0];
   const newFuture = board.history.future.slice(1);
-  
+
   return {
     ...board,
     shapes: next,
@@ -327,12 +327,12 @@ function redo(board: Board): Board {
 // Delete selected shapes
 function deleteSelectedShapes(board: Board): Board {
   if (board.selection.selectedIds.length === 0) return board;
-  
+
   const newShapes = { ...board.shapes };
   board.selection.selectedIds.forEach(id => {
     delete newShapes[id];
   });
-  
+
   return saveToHistory({
     ...board,
     shapes: newShapes,
@@ -349,11 +349,134 @@ function clearBoard(board: Board): Board {
   });
 }
 
+/* =======================
+   SHAPE RENDERER COMPONENT
+======================= */
+
+interface ShapeRendererProps {
+  shape: Shape;
+  isSelected: boolean;
+  isDraggable: boolean;
+  onShapeClick: (id: string, evt: any) => void;
+  onShapeDragEnd: (id: string, evt: any) => void;
+  onTransformEnd: (id: string, evt: any) => void;
+  onTextDblClick: (id: string) => void;
+  textEditingId: string | null;
+}
+
+const ShapeRenderer = memo(({
+  shape,
+  isSelected,
+  isDraggable,
+  onShapeClick,
+  onShapeDragEnd,
+  onTransformEnd,
+  onTextDblClick,
+  textEditingId
+}: ShapeRendererProps) => {
+  const commonProps = {
+    id: shape.id,
+    draggable: isDraggable,
+    onClick: (e: any) => onShapeClick(shape.id, e),
+    onTap: (e: any) => onShapeClick(shape.id, e),
+    onDragEnd: (e: any) => onShapeDragEnd(shape.id, e),
+    onTransformEnd: (e: any) => onTransformEnd(shape.id, e),
+  };
+
+  switch (shape.type) {
+    case "pen":
+      return (
+        <Line
+          key={shape.id}
+          {...commonProps}
+          points={shape.points}
+          stroke={shape.stroke}
+          strokeWidth={3}
+          lineCap="round"
+          lineJoin="round"
+          tension={0.5}
+        />
+      );
+
+    case "line":
+      return (
+        <Line
+          key={shape.id}
+          {...commonProps}
+          points={shape.points}
+          stroke={shape.stroke}
+          strokeWidth={3}
+          lineCap="round"
+          lineJoin="round"
+        />
+      );
+
+    case "rect":
+      return (
+        <Rect
+          key={shape.id}
+          {...commonProps}
+          x={shape.x}
+          y={shape.y}
+          width={shape.width}
+          height={shape.height}
+          fill={shape.fill}
+          stroke={shape.stroke}
+          strokeWidth={3}
+          cornerRadius={8}
+        />
+      );
+
+    case "circle":
+      return (
+        <Circle
+          key={shape.id}
+          {...commonProps}
+          x={shape.x}
+          y={shape.y}
+          radius={shape.radius}
+          stroke={shape.stroke}
+          strokeWidth={shape.strokeWidth}
+          fill="transparent"
+        />
+      );
+
+    case "text":
+      if (textEditingId === shape.id) {
+        return null;
+      }
+      return (
+        <Text
+          key={shape.id}
+          {...commonProps}
+          x={shape.x}
+          y={shape.y}
+          text={shape.text}
+          fill={shape.fill}
+          fontSize={shape.fontSize}
+          fontFamily="Spline Sans, sans-serif"
+          onDblClick={() => onTextDblClick(shape.id)}
+          onDblTap={() => onTextDblClick(shape.id)}
+        />
+      );
+
+    default:
+      return null;
+  }
+}, (prevProps, nextProps) => {
+  return (
+    prevProps.shape === nextProps.shape &&
+    prevProps.isSelected === nextProps.isSelected &&
+    prevProps.isDraggable === nextProps.isDraggable &&
+    prevProps.textEditingId === nextProps.textEditingId
+  );
+});
+
 export default function WhiteboardPage() {
   const router = useRouter();
   const params = useParams();
   const boardId = params.id as string;
-  
+
   const { user } = useAuthStore();
   const { initAuth } = useInitAuth();
   const {
@@ -374,19 +497,23 @@ export default function WhiteboardPage() {
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
   const [hasLoadedBoard, setHasLoadedBoard] = useState(false);
   const [isBoardLoading, setIsBoardLoading] = useState(false);
-  
+
   // Ref to ensure auth check only happens once
   const authCheckedRef = useRef(false);
-  
+
   const stageRef = useRef<Konva.Stage>(null);
   const trRef = useRef<Konva.Transformer>(null);
   const layerRef = useRef<Konva.Layer>(null);
-  
+
   // Refs for middle mouse panning and touch gestures
   const isMiddlePanning = useRef(false);
   const pointers = useRef<Map<number, PointerEvent>>(new Map());
   const lastCenter = useRef<{ x: number; y: number } | null>(null);
   const lastDist = useRef(0);
+
+  // Ref for animation frame throttling
+  const rAF = useRef<number | null>(null);
+  const panDelta = useRef({ x: 0, y: 0 });
 
   /* =======================
      AUTHENTICATION CHECK
@@ -396,7 +523,7 @@ export default function WhiteboardPage() {
     if (authCheckedRef.current) return; // skip if already checked
     authCheckedRef.current = true;
 
-    ;(async () => {
+    ; (async () => {
       try {
         await initAuth(); // calls /me once
       } catch (err) {
@@ -408,7 +535,7 @@ export default function WhiteboardPage() {
 
   useEffect(() => {
     if (checkingAuth) return;
-    
+
     if (!user) {
       router.replace("/login");
       return;
@@ -425,7 +552,7 @@ export default function WhiteboardPage() {
     if (!hasLoadedBoard && !isLoading && !isBoardLoading && !error && boardId && boardId !== 'undefined' && boardId !== 'null') {
       console.log('🔍 Frontend requesting board ID:', boardId);
       console.log('🔍 User ID:', user.id);
-      
+
       // Set board ID and load board data
       setBoardId(boardId);
       setIsBoardLoading(true);
@@ -483,7 +610,7 @@ export default function WhiteboardPage() {
 
     window.addEventListener('resize', handleResize);
     window.addEventListener('orientationchange', handleResize);
-    
+
     return () => {
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('orientationchange', handleResize);
@@ -503,7 +630,7 @@ export default function WhiteboardPage() {
     if (boardState.selection.selectedIds.length === 1 && boardState.activeTool === "select") {
       const selectedId = boardState.selection.selectedIds[0];
       const shape = boardState.shapes[selectedId];
-      
+
       if (shape && shape.type !== "text") {
         const node = stage.findOne(`#${selectedId}`);
         if (node) {
@@ -526,9 +653,12 @@ export default function WhiteboardPage() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      console.log('🎹 Key down:', e.key, 'Ctrl:', e.ctrlKey, 'Shift:', e.shiftKey);
+
       // Don't handle shortcuts while editing text
       if (boardState.textEditingState.editingId) {
         if (e.key === 'Escape') {
+          console.log('   Exiting text edit mode via Escape');
           updateBoardState(prev => ({
             ...saveToHistory(prev),
             textEditingState: { editingId: null },
@@ -540,21 +670,24 @@ export default function WhiteboardPage() {
       // Undo
       if (e.ctrlKey && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
+        console.log('   Triggering Undo');
         updateBoardState(undo);
       }
-      
+
       // Redo
       if (e.ctrlKey && e.key === 'y') {
         e.preventDefault();
+        console.log('   Triggering Redo');
         updateBoardState(redo);
       }
-      
+
       // Delete
       if ((e.key === 'Backspace' || e.key === 'Delete') && boardState.selection.selectedIds.length > 0) {
         e.preventDefault();
+        console.log('   Triggering Delete for:', boardState.selection.selectedIds);
         updateBoardState(deleteSelectedShapes);
       }
-      
+
       // Tool shortcuts
       if (e.key === 't' || e.key === 'T') {
         e.preventDefault();
@@ -576,7 +709,7 @@ export default function WhiteboardPage() {
 
   const handleWheel = (e: any) => {
     e.evt.preventDefault();
-    
+
     const stage = stageRef.current;
     if (!stage) return;
 
@@ -633,9 +766,9 @@ export default function WhiteboardPage() {
         const right = Math.max(shape.x, shape.x + shape.width);
         const top = Math.min(shape.y, shape.y + shape.height);
         const bottom = Math.max(shape.y, shape.y + shape.height);
-        
+
         if (worldX >= left - eraserRadius && worldX <= right + eraserRadius &&
-            worldY >= top - eraserRadius && worldY <= bottom + eraserRadius) {
+          worldY >= top - eraserRadius && worldY <= bottom + eraserRadius) {
           hit = true;
         }
       } else if (shape.type === "circle") {
@@ -646,7 +779,7 @@ export default function WhiteboardPage() {
       } else if (shape.type === "text") {
         const bounds = getShapeBounds(shape);
         if (worldX >= bounds.x - eraserRadius && worldX <= bounds.x + bounds.width + eraserRadius &&
-            worldY >= bounds.y - eraserRadius && worldY <= bounds.y + bounds.height + eraserRadius) {
+          worldY >= bounds.y - eraserRadius && worldY <= bounds.y + bounds.height + eraserRadius) {
           hit = true;
         }
       }
@@ -672,7 +805,7 @@ export default function WhiteboardPage() {
   const handlePointerDown = (e: any) => {
     const stage = e.target.getStage();
     const evt = e.evt as PointerEvent;
-    
+
     const clickedOnEmpty = e.target === stage || e.target.getType() === "Layer";
 
     // Track pointer
@@ -687,7 +820,7 @@ export default function WhiteboardPage() {
 
     const pointer = stage.getPointerPosition();
     if (!pointer) return;
-    
+
     // Convert to world coordinates
     const worldPointer = {
       x: (pointer.x - boardState.viewport.x) / boardState.viewport.scale,
@@ -697,22 +830,22 @@ export default function WhiteboardPage() {
     // --- GROUP BOUNDING BOX DRAG ---
     if (boardState.activeTool === "select" && boardState.selection.selectedIds.length > 1 && clickedOnEmpty) {
       const groupBounds = getMultiSelectionBounds(boardState.shapes, boardState.selection.selectedIds);
-      
+
       if (groupBounds && isPointInBounds(worldPointer, groupBounds)) {
         // Capture initial positions/points of all selected shapes
         const shapeSnapshots: Record<string, { x?: number; y?: number; points?: number[] }> = {};
-        
+
         boardState.selection.selectedIds.forEach(id => {
           const shape = boardState.shapes[id];
           if (!shape) return;
-          
+
           if (shape.type === "pen" || shape.type === "line") {
             shapeSnapshots[id] = { points: [...shape.points] };
           } else if ('x' in shape && 'y' in shape) {
             shapeSnapshots[id] = { x: shape.x, y: shape.y };
           }
         });
-        
+
         updateBoardState(prev => ({
           ...prev,
           dragState: {
@@ -721,7 +854,7 @@ export default function WhiteboardPage() {
             shapeSnapshots,
           },
         }));
-        
+
         stage.draggable(false);
         return;
       }
@@ -738,7 +871,7 @@ export default function WhiteboardPage() {
           y: (p1.y + p2.y) / 2,
         };
         const dist = Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
-        
+
         lastCenter.current = center;
         lastDist.current = dist;
         stage.draggable(false);
@@ -773,7 +906,7 @@ export default function WhiteboardPage() {
         stage.draggable(false);
         return;
       }
-      
+
       // Enable stage panning for touch/empty mouse click
       if (clickedOnEmpty) {
         stage.draggable(true);
@@ -789,7 +922,7 @@ export default function WhiteboardPage() {
 
     // --- DRAWING TOOLS ---
     stage.draggable(false);
-    
+
     const newId = generateId();
 
     if (boardState.activeTool === "pen") {
@@ -799,7 +932,7 @@ export default function WhiteboardPage() {
         points: [worldPointer.x, worldPointer.y],
         stroke: "#ffffff",
       };
-      
+
       updateBoardState(prev => ({
         ...prev,
         shapes: { ...prev.shapes, [newId]: newShape },
@@ -814,7 +947,7 @@ export default function WhiteboardPage() {
         points: [worldPointer.x, worldPointer.y, worldPointer.x, worldPointer.y],
         stroke: "#ffffff",
       };
-      
+
       updateBoardState(prev => ({
         ...prev,
         shapes: { ...prev.shapes, [newId]: newShape },
@@ -833,7 +966,7 @@ export default function WhiteboardPage() {
         fill: "transparent",
         stroke: "#80f20d",
       };
-      
+
       updateBoardState(prev => ({
         ...prev,
         shapes: { ...prev.shapes, [newId]: newShape },
@@ -851,7 +984,7 @@ export default function WhiteboardPage() {
         stroke: "#00f3ff",
         strokeWidth: 3,
       };
-      
+
       updateBoardState(prev => ({
         ...prev,
         shapes: { ...prev.shapes, [newId]: newShape },
@@ -869,7 +1002,7 @@ export default function WhiteboardPage() {
         fill: "#ffffff",
         fontSize: 24,
       };
-      
+
       updateBoardState(prev => saveToHistory({
         ...prev,
         shapes: { ...prev.shapes, [newId]: newShape },
@@ -880,202 +1013,222 @@ export default function WhiteboardPage() {
 
   const handlePointerMove = (e: any) => {
     const stage = e.target.getStage();
-    
-    // --- MIDDLE MOUSE PAN ---
+
+    // Accumulate pan deltas
     if (isMiddlePanning.current) {
-      const dx = e.evt.movementX;
-      const dy = e.evt.movementY;
-      
-      updateBoardState(prev => ({
-        ...prev,
-        viewport: {
-          ...prev.viewport,
-          x: prev.viewport.x + dx,
-          y: prev.viewport.y + dy,
-        },
-      }));
-      return;
+      panDelta.current.x += e.evt.movementX || 0;
+      panDelta.current.y += e.evt.movementY || 0;
     }
 
-    // --- GROUP DRAG MOVE ---
-    // This is where we update all selected shapes' positions during group drag
-    if (boardState.dragState.isGroupDragging && boardState.dragState.startPoint) {
+    // Throttle updates
+    if (rAF.current) {
+      cancelAnimationFrame(rAF.current);
+    }
+
+    rAF.current = requestAnimationFrame(() => {
+      rAF.current = null;
+
+      // --- MIDDLE MOUSE PAN ---
+      if (isMiddlePanning.current) {
+        const dx = panDelta.current.x;
+        const dy = panDelta.current.y;
+
+        if (dx !== 0 || dy !== 0) {
+          updateBoardState(prev => ({
+            ...prev,
+            viewport: {
+              ...prev.viewport,
+              x: prev.viewport.x + dx,
+              y: prev.viewport.y + dy,
+            },
+          }));
+          panDelta.current = { x: 0, y: 0 };
+        }
+        return;
+      }
+
+      // --- GROUP DRAG MOVE ---
+      if (boardState.dragState.isGroupDragging && boardState.dragState.startPoint) {
+        const pointer = stage.getPointerPosition();
+        if (!pointer) return;
+
+        const worldPointer = {
+          x: (pointer.x - boardState.viewport.x) / boardState.viewport.scale,
+          y: (pointer.y - boardState.viewport.y) / boardState.viewport.scale,
+        };
+
+        // Calculate delta from drag start
+        const dx = worldPointer.x - boardState.dragState.startPoint.x;
+        const dy = worldPointer.y - boardState.dragState.startPoint.y;
+
+        updateBoardState(prev => {
+          const newShapes = { ...prev.shapes };
+
+          prev.selection.selectedIds.forEach(id => {
+            const shape = newShapes[id];
+            const snapshot = prev.dragState.shapeSnapshots[id];
+            if (!shape || !snapshot) return;
+
+            if ((shape.type === "pen" || shape.type === "line") && snapshot.points) {
+              const updatedPoints = snapshot.points.map((coord, index) =>
+                index % 2 === 0 ? coord + dx : coord + dy
+              );
+              newShapes[id] = { ...shape, points: updatedPoints };
+            }
+            else if ('x' in shape && 'y' in shape && snapshot.x !== undefined && snapshot.y !== undefined) {
+              newShapes[id] = {
+                ...shape,
+                x: snapshot.x + dx,
+                y: snapshot.y + dy
+              };
+            }
+          });
+
+          return { ...prev, shapes: newShapes };
+        });
+        return;
+      }
+
+      // --- PINCH ZOOM ---
+      if (pointers.current.size === 2) {
+        const pts = Array.from(pointers.current.values());
+        const p1 = { x: pts[0].clientX, y: pts[0].clientY };
+        const p2 = { x: pts[1].clientX, y: pts[1].clientY };
+
+        const newCenter = {
+          x: (p1.x + p2.x) / 2,
+          y: (p1.y + p2.y) / 2,
+        };
+        const newDist = Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
+
+        if (lastCenter.current && lastDist.current) {
+          const dx = newCenter.x - lastCenter.current.x;
+          const dy = newCenter.y - lastCenter.current.y;
+
+          const scaleChange = newDist / lastDist.current;
+          const oldScale = boardState.viewport.scale;
+          const newScale = Math.max(0.1, Math.min(5, oldScale * scaleChange));
+
+          const pointer = stage.getPointerPosition();
+          let newViewport = { ...boardState.viewport };
+
+          if (pointer) {
+            const mousePointTo = {
+              x: (pointer.x - boardState.viewport.x) / oldScale,
+              y: (pointer.y - boardState.viewport.y) / oldScale,
+            };
+
+            newViewport = {
+              scale: newScale,
+              x: pointer.x - mousePointTo.x * newScale + dx,
+              y: pointer.y - mousePointTo.y * newScale + dy,
+            };
+          } else {
+            newViewport = {
+              scale: newScale,
+              x: boardState.viewport.x + dx,
+              y: boardState.viewport.y + dy,
+            };
+          }
+
+          updateBoardState(prev => ({ ...prev, viewport: newViewport }));
+        }
+
+        lastCenter.current = newCenter;
+        lastDist.current = newDist;
+        return;
+      }
+
+      // --- MARQUEE SELECTION ---
+      if (boardState.selection.isMarqueeSelecting && boardState.selection.marqueeStart) {
+        const pointer = stage.getPointerPosition();
+        if (!pointer) return;
+
+        const worldPointer = {
+          x: (pointer.x - boardState.viewport.x) / boardState.viewport.scale,
+          y: (pointer.y - boardState.viewport.y) / boardState.viewport.scale,
+        };
+
+        updateBoardState(prev => ({
+          ...prev,
+          selection: {
+            ...prev.selection,
+            marqueeEnd: worldPointer,
+          },
+        }));
+        return;
+      }
+
+      // --- DRAWING TOOLS ---
+      if (!boardState.drawingState.isDrawing || !boardState.drawingState.currentShapeId) return;
+
       const pointer = stage.getPointerPosition();
       if (!pointer) return;
-      
+
       const worldPointer = {
         x: (pointer.x - boardState.viewport.x) / boardState.viewport.scale,
         y: (pointer.y - boardState.viewport.y) / boardState.viewport.scale,
       };
-      
-      // Calculate delta from drag start
-      const dx = worldPointer.x - boardState.dragState.startPoint.x;
-      const dy = worldPointer.y - boardState.dragState.startPoint.y;
-      
+
+      // --- ERASER MOVE ---
+      if (boardState.activeTool === "eraser") {
+        checkEraserCollision(worldPointer.x, worldPointer.y);
+        return;
+      }
+
       updateBoardState(prev => {
+        const currentShape = prev.shapes[prev.drawingState.currentShapeId!];
+        if (!currentShape) return prev;
+
         const newShapes = { ...prev.shapes };
-        
-        // Update each selected shape based on its initial snapshot
-        prev.selection.selectedIds.forEach(id => {
-          const shape = newShapes[id];
-          const snapshot = prev.dragState.shapeSnapshots[id];
-          if (!shape || !snapshot) return;
-          
-          // For pen/line shapes: update all points
-          if ((shape.type === "pen" || shape.type === "line") && snapshot.points) {
-            const updatedPoints = snapshot.points.map((coord, index) => 
-              index % 2 === 0 ? coord + dx : coord + dy
-            );
-            newShapes[id] = { ...shape, points: updatedPoints };
-          }
-          // For shapes with x,y: update position
-          else if ('x' in shape && 'y' in shape && snapshot.x !== undefined && snapshot.y !== undefined) {
-            newShapes[id] = { 
-              ...shape, 
-              x: snapshot.x + dx, 
-              y: snapshot.y + dy 
-            };
-          }
-        });
-        
-        return { ...prev, shapes: newShapes };
-      });
-      return;
-    }
 
-    // --- PINCH ZOOM ---
-    if (pointers.current.size === 2) {
-      const pts = Array.from(pointers.current.values());
-      const p1 = { x: pts[0].clientX, y: pts[0].clientY };
-      const p2 = { x: pts[1].clientX, y: pts[1].clientY };
-
-      const newCenter = {
-        x: (p1.x + p2.x) / 2,
-        y: (p1.y + p2.y) / 2,
-      };
-      const newDist = Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
-
-      if (lastCenter.current && lastDist.current) {
-        const dx = newCenter.x - lastCenter.current.x;
-        const dy = newCenter.y - lastCenter.current.y;
-        
-        const scaleChange = newDist / lastDist.current;
-        const oldScale = boardState.viewport.scale;
-        const newScale = Math.max(0.1, Math.min(5, oldScale * scaleChange));
-
-        const pointer = stage.getPointerPosition();
-        let newViewport = { ...boardState.viewport };
-        
-        if (pointer) {
-          const mousePointTo = {
-            x: (pointer.x - boardState.viewport.x) / oldScale,
-            y: (pointer.y - boardState.viewport.y) / oldScale,
-          };
-
-          newViewport = {
-            scale: newScale,
-            x: pointer.x - mousePointTo.x * newScale + dx,
-            y: pointer.y - mousePointTo.y * newScale + dy,
-          };
-        } else {
-          newViewport = {
-            scale: newScale,
-            x: boardState.viewport.x + dx,
-            y: boardState.viewport.y + dy,
+        if (currentShape.type === "pen") {
+          newShapes[currentShape.id] = {
+            ...currentShape,
+            points: [...currentShape.points, worldPointer.x, worldPointer.y],
           };
         }
 
-        updateBoardState(prev => ({ ...prev, viewport: newViewport }));
-      }
+        if (currentShape.type === "line") {
+          newShapes[currentShape.id] = {
+            ...currentShape,
+            points: [currentShape.points[0], currentShape.points[1], worldPointer.x, worldPointer.y],
+          };
+        }
 
-      lastCenter.current = newCenter;
-      lastDist.current = newDist;
-      return;
-    }
+        if (currentShape.type === "rect") {
+          newShapes[currentShape.id] = {
+            ...currentShape,
+            width: worldPointer.x - currentShape.x,
+            height: worldPointer.y - currentShape.y,
+          };
+        }
 
-    // --- MARQUEE SELECTION ---
-    if (boardState.selection.isMarqueeSelecting && boardState.selection.marqueeStart) {
-      const pointer = stage.getPointerPosition();
-      if (!pointer) return;
+        if (currentShape.type === "circle") {
+          const radius = Math.sqrt(
+            Math.pow(worldPointer.x - currentShape.x, 2) +
+            Math.pow(worldPointer.y - currentShape.y, 2)
+          );
+          newShapes[currentShape.id] = {
+            ...currentShape,
+            radius,
+          };
+        }
 
-      const worldPointer = {
-        x: (pointer.x - boardState.viewport.x) / boardState.viewport.scale,
-        y: (pointer.y - boardState.viewport.y) / boardState.viewport.scale,
-      };
-
-      updateBoardState(prev => ({
-        ...prev,
-        selection: {
-          ...prev.selection,
-          marqueeEnd: worldPointer,
-        },
-      }));
-      return;
-    }
-
-    // --- DRAWING TOOLS ---
-    if (!boardState.drawingState.isDrawing || !boardState.drawingState.currentShapeId) return;
-
-    const pointer = stage.getPointerPosition();
-    if (!pointer) return;
-
-    const worldPointer = {
-      x: (pointer.x - boardState.viewport.x) / boardState.viewport.scale,
-      y: (pointer.y - boardState.viewport.y) / boardState.viewport.scale,
-    };
-
-    // --- ERASER MOVE ---
-    if (boardState.activeTool === "eraser") {
-      checkEraserCollision(worldPointer.x, worldPointer.y);
-      return;
-    }
-
-    updateBoardState(prev => {
-      const currentShape = prev.shapes[prev.drawingState.currentShapeId!];
-      if (!currentShape) return prev;
-
-      const newShapes = { ...prev.shapes };
-
-      if (currentShape.type === "pen") {
-        newShapes[currentShape.id] = {
-          ...currentShape,
-          points: [...currentShape.points, worldPointer.x, worldPointer.y],
-        };
-      }
-
-      if (currentShape.type === "line") {
-        newShapes[currentShape.id] = {
-          ...currentShape,
-          points: [currentShape.points[0], currentShape.points[1], worldPointer.x, worldPointer.y],
-        };
-      }
-
-      if (currentShape.type === "rect") {
-        newShapes[currentShape.id] = {
-          ...currentShape,
-          width: worldPointer.x - currentShape.x,
-          height: worldPointer.y - currentShape.y,
-        };
-      }
-
-      if (currentShape.type === "circle") {
-        const radius = Math.sqrt(
-          Math.pow(worldPointer.x - currentShape.x, 2) + 
-          Math.pow(worldPointer.y - currentShape.y, 2)
-        );
-        newShapes[currentShape.id] = {
-          ...currentShape,
-          radius,
-        };
-      }
-
-      return { ...prev, shapes: newShapes };
+        return { ...prev, shapes: newShapes };
+      });
     });
   };
 
   const handlePointerUp = (e: any) => {
     const stage = e.target.getStage();
     const evt = e.evt as PointerEvent;
+
+    // Cancel pending RAF
+    if (rAF.current) {
+      cancelAnimationFrame(rAF.current);
+      rAF.current = null;
+    }
 
     // --- MIDDLE MOUSE PAN END ---
     if (evt.button === 1) {
@@ -1100,22 +1253,22 @@ export default function WhiteboardPage() {
     if (boardState.selection.isMarqueeSelecting && boardState.selection.marqueeStart && boardState.selection.marqueeEnd) {
       const start = boardState.selection.marqueeStart;
       const end = boardState.selection.marqueeEnd;
-      
+
       const marquee = {
         x: Math.min(start.x, end.x),
         y: Math.min(start.y, end.y),
         width: Math.abs(end.x - start.x),
         height: Math.abs(end.y - start.y),
       };
-      
+
       const intersectingIds: string[] = [];
-      
+
       Object.values(boardState.shapes).forEach(shape => {
         if (doesShapeIntersectMarquee(shape, marquee)) {
           intersectingIds.push(shape.id);
         }
       });
-      
+
       updateBoardState(prev => ({
         ...prev,
         selection: {
@@ -1123,12 +1276,12 @@ export default function WhiteboardPage() {
           isMarqueeSelecting: false,
           marqueeStart: null,
           marqueeEnd: null,
-          selectedIds: evt.shiftKey 
+          selectedIds: evt.shiftKey
             ? [...new Set([...prev.selection.selectedIds, ...intersectingIds])]
             : intersectingIds,
         },
       }));
-      
+
       stage.draggable(true);
     }
 
@@ -1178,17 +1331,18 @@ export default function WhiteboardPage() {
     }
   };
 
-  const handleShapeClick = (id: string, evt: any) => {
+  const handleShapeClick = useCallback((id: string, evt: any) => {
+    console.log('🖱️ Shape clicked:', id, 'Tool:', boardState.activeTool);
     if (boardState.activeTool !== "select") return;
-    
+
     updateBoardState(prev => {
       const isShiftKey = evt.evt?.shiftKey || false;
-      
+
       if (isShiftKey) {
         const newSelectedIds = prev.selection.selectedIds.includes(id)
           ? prev.selection.selectedIds.filter(selectedId => selectedId !== id)
           : [...prev.selection.selectedIds, id];
-        
+
         return {
           ...prev,
           selection: { ...prev.selection, selectedIds: newSelectedIds },
@@ -1200,21 +1354,22 @@ export default function WhiteboardPage() {
         };
       }
     });
-  };
+  }, [boardState.activeTool, updateBoardState]);
 
-  const handleTextDblClick = (id: string) => {
+  const handleTextDblClick = useCallback((id: string) => {
+    console.log('🖱️🖱️ Text double clicked:', id);
     updateBoardState(prev => ({
       ...prev,
       textEditingState: { editingId: id },
       selection: { ...prev.selection, selectedIds: [] },
     }));
-  };
+  }, [updateBoardState]);
 
   const handleTextChange = (id: string, newText: string) => {
     updateBoardState(prev => {
       const shape = prev.shapes[id];
       if (!shape || shape.type !== "text") return prev;
-      
+
       return {
         ...prev,
         shapes: {
@@ -1234,13 +1389,13 @@ export default function WhiteboardPage() {
     }
   };
 
-  const handleShapeDragEnd = (id: string, e: any) => {
+  const handleShapeDragEnd = useCallback((id: string, e: any) => {
     const node = e.target;
-    
+
     updateBoardState(prev => {
       const shape = prev.shapes[id];
       if (!shape || !('x' in shape && 'y' in shape)) return prev;
-      
+
       return saveToHistory({
         ...prev,
         shapes: {
@@ -1249,9 +1404,9 @@ export default function WhiteboardPage() {
         },
       });
     });
-  };
+  }, [updateBoardState]);
 
-  const handleTransformEnd = (id: string, e: any) => {
+  const handleTransformEnd = useCallback((id: string, e: any) => {
     const node = e.target;
     const scaleX = node.scaleX();
     const scaleY = node.scaleY();
@@ -1297,122 +1452,28 @@ export default function WhiteboardPage() {
         },
       });
     });
-  };
+  }, [updateBoardState]);
 
-  /* =======================
-     RENDER SHAPE
-  ======================= */
 
-  const renderShape = (shape: Shape) => {
-    const isSelected = boardState.selection.selectedIds.includes(shape.id);
-    
-    const commonProps = {
-      id: shape.id,
-      // Only draggable in select mode for single selection
-      draggable: boardState.activeTool === "select" && boardState.selection.selectedIds.length === 1 && isSelected,
-      onClick: (e: any) => handleShapeClick(shape.id, e),
-      onTap: (e: any) => handleShapeClick(shape.id, e),
-      onDragEnd: (e: any) => handleShapeDragEnd(shape.id, e),
-      onTransformEnd: (e: any) => handleTransformEnd(shape.id, e),
-    };
-
-    switch (shape.type) {
-      case "pen":
-        return (
-          <Line
-            key={shape.id}
-            {...commonProps}
-            points={shape.points}
-            stroke={shape.stroke}
-            strokeWidth={3}
-            lineCap="round"
-            lineJoin="round"
-            tension={0.5}
-          />
-        );
-
-      case "line":
-        return (
-          <Line
-            key={shape.id}
-            {...commonProps}
-            points={shape.points}
-            stroke={shape.stroke}
-            strokeWidth={3}
-            lineCap="round"
-            lineJoin="round"
-          />
-        );
-
-      case "rect":
-        return (
-          <Rect
-            key={shape.id}
-            {...commonProps}
-            x={shape.x}
-            y={shape.y}
-            width={shape.width}
-            height={shape.height}
-            fill={shape.fill}
-            stroke={shape.stroke}
-            strokeWidth={3}
-            cornerRadius={8}
-          />
-        );
-
-      case "circle":
-        return (
-          <Circle
-            key={shape.id}
-            {...commonProps}
-            x={shape.x}
-            y={shape.y}
-            radius={shape.radius}
-            stroke={shape.stroke}
-            strokeWidth={shape.strokeWidth}
-            fill="transparent"
-          />
-        );
-
-      case "text":
-        if (boardState.textEditingState.editingId === shape.id) {
-          return null;
-        }
-        return (
-          <Text
-            key={shape.id}
-            {...commonProps}
-            x={shape.x}
-            y={shape.y}
-            text={shape.text}
-            fill={shape.fill}
-            fontSize={shape.fontSize}
-            fontFamily="Spline Sans, sans-serif"
-            onDblClick={() => handleTextDblClick(shape.id)}
-            onDblTap={() => handleTextDblClick(shape.id)}
-          />
-        );
-    }
-  };
 
   /* =======================
      UI ACTIONS
   ======================= */
 
-  const handleClear = () => {
+  const handleClear = useCallback(() => {
     updateBoardState(clearBoard);
-  };
+  }, [updateBoardState]);
 
-  const handleReset = () => {
+  const handleReset = useCallback(() => {
     updateBoardState(prev => ({
       ...prev,
       viewport: { scale: 1, x: 0, y: 0 },
     }));
-  };
+  }, [updateBoardState]);
 
   const handleDeleteBoard = async () => {
     if (!boardId) return;
-    
+
     if (confirm("Are you sure you want to delete this board? This action cannot be undone.")) {
       try {
         await boardAPI.deleteBoard(boardId);
@@ -1424,17 +1485,17 @@ export default function WhiteboardPage() {
   };
 
   // Calculate group bounding box and marquee for rendering
-  const groupBoundingBox = boardState.selection.selectedIds.length > 1 
-    ? getMultiSelectionBounds(boardState.shapes, boardState.selection.selectedIds) 
+  const groupBoundingBox = boardState.selection.selectedIds.length > 1
+    ? getMultiSelectionBounds(boardState.shapes, boardState.selection.selectedIds)
     : null;
 
   const marqueeRect = boardState.selection.marqueeStart && boardState.selection.marqueeEnd
     ? {
-        x: Math.min(boardState.selection.marqueeStart.x, boardState.selection.marqueeEnd.x),
-        y: Math.min(boardState.selection.marqueeStart.y, boardState.selection.marqueeEnd.y),
-        width: Math.abs(boardState.selection.marqueeEnd.x - boardState.selection.marqueeStart.x),
-        height: Math.abs(boardState.selection.marqueeEnd.y - boardState.selection.marqueeStart.y),
-      }
+      x: Math.min(boardState.selection.marqueeStart.x, boardState.selection.marqueeEnd.x),
+      y: Math.min(boardState.selection.marqueeStart.y, boardState.selection.marqueeEnd.y),
+      width: Math.abs(boardState.selection.marqueeEnd.x - boardState.selection.marqueeStart.x),
+      height: Math.abs(boardState.selection.marqueeEnd.y - boardState.selection.marqueeStart.y),
+    }
     : null;
 
   /* =======================
@@ -1477,24 +1538,24 @@ export default function WhiteboardPage() {
       )}
 
       {/* GRID */}
-      <div 
+      <div
         style={{
           ...styles.grid,
           backgroundSize: `${30 * boardState.viewport.scale}px ${30 * boardState.viewport.scale}px`,
           backgroundPosition: `${boardState.viewport.x}px ${boardState.viewport.y}px`,
-        }} 
+        }}
       />
 
       {/* TOP NAV */}
       <div style={styles.topNav}>
         <div style={styles.navLeft}>
-          <button 
+          <button
             style={styles.backButton}
             onClick={() => router.push("/board")}
             title="Back to Boards"
           >
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-              <path d="M19 12H5M12 19L5 12l7-7" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M19 12H5M12 19L5 12l7-7" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
           <div>
@@ -1507,7 +1568,7 @@ export default function WhiteboardPage() {
         <div style={styles.navRight}>
           <button style={styles.deleteButton} onClick={handleDeleteBoard} title="Delete Board">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-              <path d="M3 6h18M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2m3 0v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6h14z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M3 6h18M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2m3 0v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6h14z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
           <LogoutButton className="bg-red-500/20 hover:bg-red-500/30 text-red-400 px-4 py-2 rounded-full border border-red-500/30" />
@@ -1529,20 +1590,32 @@ export default function WhiteboardPage() {
         onWheel={handleWheel}
         draggable={boardState.activeTool === "select" && !boardState.dragState.isGroupDragging}
         onDragEnd={handleDragEnd}
-        style={{ 
-          cursor: isMiddlePanning.current 
-            ? 'grabbing' 
+        style={{
+          cursor: isMiddlePanning.current
+            ? 'grabbing'
             : boardState.dragState.isGroupDragging
               ? 'grabbing'
-              : boardState.activeTool === 'eraser' 
-                ? 'crosshair' 
-                : 'default' 
+              : boardState.activeTool === 'eraser'
+                ? 'crosshair'
+                : 'default'
         }}
       >
         <Layer ref={layerRef}>
-          {Object.values(boardState.shapes).map(renderShape)}
-          
-          <Transformer 
+          {Object.values(boardState.shapes).map((shape) => (
+            <ShapeRenderer
+              key={shape.id}
+              shape={shape}
+              isSelected={boardState.selection.selectedIds.includes(shape.id)}
+              isDraggable={boardState.activeTool === "select" && boardState.selection.selectedIds.length === 1 && boardState.selection.selectedIds.includes(shape.id)}
+              onShapeClick={handleShapeClick}
+              onShapeDragEnd={handleShapeDragEnd}
+              onTransformEnd={handleTransformEnd}
+              onTextDblClick={handleTextDblClick}
+              textEditingId={boardState.textEditingState.editingId}
+            />
+          ))}
+
+          <Transformer
             ref={trRef}
             anchorSize={20}
             borderStrokeWidth={3}
@@ -1550,7 +1623,7 @@ export default function WhiteboardPage() {
             anchorFill="#80f20d"
             borderStroke="#80f20d"
           />
-          
+
           {marqueeRect && (
             <Rect
               x={marqueeRect.x}
@@ -1564,7 +1637,7 @@ export default function WhiteboardPage() {
               listening={false}
             />
           )}
-          
+
           {groupBoundingBox && (
             <Rect
               x={groupBoundingBox.x}
@@ -1622,25 +1695,25 @@ export default function WhiteboardPage() {
 
       {/* SIDE PANEL */}
       <div style={styles.sidePanel}>
-        <button 
-          style={styles.sidePanelButton} 
+        <button
+          style={styles.sidePanelButton}
           onClick={handleReset}
           title="Reset View (Center)"
         >
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
-        <button 
-          style={styles.sidePanelButton} 
+        <button
+          style={styles.sidePanelButton}
           onClick={handleClear}
           title="Clear Board"
         >
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <path d="M3 6h18M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2m3 0v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6h14z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M3 6h18M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2m3 0v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6h14z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
-        <button 
+        <button
           style={{
             ...styles.sidePanelButton,
             ...(boardState.history.past.length === 0 ? { opacity: 0.3, cursor: 'not-allowed' } : {})
@@ -1650,10 +1723,10 @@ export default function WhiteboardPage() {
           title="Undo (Ctrl+Z)"
         >
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <path d="M3 7v6h6M21 17a9 9 0 00-9-9 9 9 0 00-9 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M3 7v6h6M21 17a9 9 0 00-9-9 9 9 0 00-9 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
-        <button 
+        <button
           style={{
             ...styles.sidePanelButton,
             ...(boardState.history.future.length === 0 ? { opacity: 0.3, cursor: 'not-allowed' } : {})
@@ -1663,14 +1736,14 @@ export default function WhiteboardPage() {
           title="Redo (Ctrl+Y)"
         >
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <path d="M21 7v6h-6M3 17a9 9 0 019-9 9 9 0 019 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M21 7v6h-6M3 17a9 9 0 019-9 9 9 0 019 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
       </div>
 
       {/* BOTTOM TOOLBAR */}
       <div style={styles.toolbar}>
-        <button 
+        <button
           onClick={() => updateBoardState(prev => ({ ...prev, activeTool: "select" }))}
           style={{
             ...styles.toolButton,
@@ -1679,11 +1752,11 @@ export default function WhiteboardPage() {
           title="Select Tool"
         >
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
 
-        <button 
+        <button
           onClick={() => updateBoardState(prev => ({ ...prev, activeTool: "pen" }))}
           style={{
             ...styles.toolButton,
@@ -1692,11 +1765,11 @@ export default function WhiteboardPage() {
           title="Freehand Pen"
         >
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <path d="M3 21l4-4m0 0L18 6l3-3-3-3-3 3L4 14l3 3z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M3 21l4-4m0 0L18 6l3-3-3-3-3 3L4 14l3 3z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
 
-        <button 
+        <button
           onClick={() => updateBoardState(prev => ({ ...prev, activeTool: "line" }))}
           style={{
             ...styles.toolButton,
@@ -1705,11 +1778,11 @@ export default function WhiteboardPage() {
           title="Straight Line"
         >
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <path d="M4 20L20 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+            <path d="M4 20L20 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
           </svg>
         </button>
 
-        <button 
+        <button
           onClick={() => updateBoardState(prev => ({ ...prev, activeTool: "rect" }))}
           style={{
             ...styles.toolButton,
@@ -1718,11 +1791,11 @@ export default function WhiteboardPage() {
           title="Rectangle"
         >
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <rect x="4" y="4" width="16" height="16" rx="2" stroke="currentColor" strokeWidth="2"/>
+            <rect x="4" y="4" width="16" height="16" rx="2" stroke="currentColor" strokeWidth="2" />
           </svg>
         </button>
 
-        <button 
+        <button
           onClick={() => updateBoardState(prev => ({ ...prev, activeTool: "circle" }))}
           style={{
             ...styles.toolButton,
@@ -1731,11 +1804,11 @@ export default function WhiteboardPage() {
           title="Circle"
         >
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="2"/>
+            <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="2" />
           </svg>
         </button>
 
-        <button 
+        <button
           onClick={() => updateBoardState(prev => ({ ...prev, activeTool: "text" }))}
           style={{
             ...styles.toolButton,
@@ -1744,11 +1817,11 @@ export default function WhiteboardPage() {
           title="Text (T)"
         >
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <path d="M4 7V4h16v3M9 20h6M12 4v16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M4 7V4h16v3M9 20h6M12 4v16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
 
-        <button 
+        <button
           onClick={() => updateBoardState(prev => ({ ...prev, activeTool: "eraser" }))}
           style={{
             ...styles.toolButton,
@@ -1757,8 +1830,8 @@ export default function WhiteboardPage() {
           title="Eraser (E)"
         >
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <path d="M7 21h10M5 10l7.5-7.5a2.121 2.121 0 013 0l3 3a2.121 2.121 0 010 3L11 16l-6-6z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            <path d="M5 10l6 6m-3.5-3.5L2 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M7 21h10M5 10l7.5-7.5a2.121 2.121 0 013 0l3 3a2.121 2.121 0 010 3L11 16l-6-6z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M5 10l6 6m-3.5-3.5L2 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
       </div>

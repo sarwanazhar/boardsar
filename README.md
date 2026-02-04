@@ -271,7 +271,7 @@ vercel
 ### JWT Authentication
 - Tokens are signed with HMAC using the JWT_SECRET
 - Tokens expire after 24 hours
-- All protected routes require valid JWT tokens
+- All protected routes require valid JWT tokens sent via `Authorization: Bearer <token>` header
 
 ### Data Validation
 - Input validation on all API endpoints
